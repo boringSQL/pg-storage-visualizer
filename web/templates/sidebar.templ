@@ -1,0 +1,93 @@
+package templates
+
+import "fmt"
+
+type TableInfo struct {
+	Name      string
+	RowCount  int64
+	DeadRows  int64
+	Size      int64
+}
+
+type IndexInfo struct {
+	Name      string
+	TableName string
+	Size      int64
+	IsPrimary bool
+	IsUnique  bool
+}
+
+func formatBytes(bytes int64) string {
+	if bytes == 0 {
+		return "0 B"
+	}
+	const k = 1024
+	sizes := []string{"B", "KB", "MB", "GB"}
+	i := 0
+	b := float64(bytes)
+	for b >= k && i < len(sizes)-1 {
+		b /= k
+		i++
+	}
+	return fmt.Sprintf("%.1f %s", b, sizes[i])
+}
+
+templ TableList(tables []TableInfo, currentTable string) {
+	if len(tables) == 0 {
+		<div style="padding: 12px 20px; color: var(--text-muted); font-size: 0.8rem;">No tables found</div>
+	} else {
+		for _, t := range tables {
+			<button
+				class={ "table-btn", templ.KV("active", t.Name == currentTable) }
+				data-table={ t.Name }
+			>
+				<div class="table-icon">📦</div>
+				<div class="table-text">
+					<div class="table-name">{ t.Name }</div>
+					<div class="table-rows">
+						{ fmt.Sprintf("%d rows", t.RowCount) }
+						if t.DeadRows > 0 {
+							{ fmt.Sprintf(" (%d dead)", t.DeadRows) }
+						}
+					</div>
+				</div>
+				<div class="table-size">{ formatBytes(t.Size) }</div>
+			</button>
+		}
+	}
+}
+
+templ IndexList(indexes []IndexInfo, currentIndex string) {
+	if len(indexes) == 0 {
+		<div style="padding: 12px 20px; color: var(--text-muted); font-size: 0.8rem;">No indexes found</div>
+	} else {
+		for _, idx := range indexes {
+			<button
+				class={ "index-btn", templ.KV("active", idx.Name == currentIndex) }
+				data-index={ idx.Name }
+				data-table={ idx.TableName }
+			>
+				<div class="index-icon">🌲</div>
+				<div class="index-text">
+					<div class="index-name">{ idx.Name }</div>
+					<div class="index-table">
+						on { idx.TableName }
+						if idx.IsPrimary {
+							<span style="color: var(--purple-400);"> (PK)</span>
+						} else if idx.IsUnique {
+							<span style="color: var(--cyan-400);"> (unique)</span>
+						}
+					</div>
+				</div>
+				<div class="index-size">{ formatBytes(idx.Size) }</div>
+			</button>
+		}
+	}
+}
+
+templ SidebarLoading() {
+	<div class="loading">
+		<div class="loading-spinner"></div>
+		Loading...
+	</div>
+}

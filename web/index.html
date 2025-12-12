@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>pg-storage-visualizer</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+    <div class="app">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="https://boringsql.com/" target="_blank" rel="noopener">
+                    <img src="/logo.png" alt="boringSQL" class="logo-img">
+                </a>
+                <h1 class="sidebar-title">Storage Visualizer</h1>
+            </div>
+            <div class="section-label">Tables</div>
+            <div class="table-list" id="tableList"
+                 hx-get="/htmx/tables"
+                 hx-trigger="load">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Loading...
+                </div>
+            </div>
+            <div class="section-label">Indexes</div>
+            <div class="index-list" id="indexList"
+                 hx-get="/htmx/indexes"
+                 hx-trigger="load">
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    Loading...
+                </div>
+            </div>
+            <div class="section-label" style="display: flex; align-items: center; gap: 8px;">
+                MVCC State
+                <button id="refreshMvcc" style="background: none; border: none; cursor: pointer; font-size: 0.7rem; color: var(--text-muted); padding: 2px 6px;" title="Refresh">🔄</button>
+            </div>
+            <div class="mvcc-info" id="mvccInfo"
+                 hx-get="/htmx/mvcc"
+                 hx-trigger="load, click from:#refreshMvcc"
+                 style="padding: 12px 20px; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">
+                <div style="color: var(--text-muted);">Loading...</div>
+            </div>
+            <div class="connection-status">
+                <div class="status-indicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Connecting...</span>
+                </div>
+            </div>
+        </aside>
+        <main class="main" id="mainContent">
+            <div class="empty-state">
+                <div class="empty-state-icon">📦</div>
+                <h2 style="color: var(--text-primary);">PostgreSQL Storage Visualizer</h2>
+                <p style="margin-bottom: 24px; color: var(--text-secondary);">Select a table or index from the sidebar to explore its internal structure</p>
+                <div style="text-align: left; max-width: 500px; margin: 0 auto; font-size: 0.85rem; color: var(--text-primary);">
+                    <p style="margin-bottom: 16px; text-align: center;">Part of <a href="https://boringsql.com/" target="_blank" rel="noopener" style="color: var(--blue-400); font-weight: 600;">boringSQL</a> toolkit</p>
+                    <p style="margin-bottom: 12px;"><strong>Features:</strong></p>
+                    <ul style="margin: 0 0 20px 20px; line-height: 1.8;">
+                        <li>Table inspection - heap pages, tuple layout, MVCC visibility</li>
+                        <li>Index visualization - B-tree structure, page density, bloat</li>
+                        <li>HOT update demo - see heap-only tuples and ctid chains</li>
+                        <li>Row finder - locate rows by PK or TID</li>
+                    </ul>
+                    <p style="margin-bottom: 8px;">Uses built-in <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;">pageinspect</code> and <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;">pgstattuple</code> extensions.</p>
+                    <div style="margin-top: 24px; padding: 12px 16px; background: #2a1f1f; border: 1px solid #dc2626; border-radius: 8px; color: #fca5a5;">
+                        <strong>⚠️ NOT FOR PRODUCTION USE</strong>
+                        <div style="font-size: 0.75rem; margin-top: 4px; color: #fca5a5;">Do not ever use with production DB.</div>
+                    </div>
+                    <p style="margin-top: 20px; font-size: 0.75rem; color: var(--text-muted); text-align: center;">
+                        &copy; 2025, Radim Marek &lt;radim@boringsql.com&gt; &middot; <a href="https://boringsql.com/" target="_blank" rel="noopener" style="color: var(--text-muted);">boringSQL</a>
+                    </p>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="/app.js"></script>
+</body>
+</html>

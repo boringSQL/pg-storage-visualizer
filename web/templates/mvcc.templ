@@ -1,0 +1,41 @@
+package templates
+
+import "fmt"
+
+type MVCCData struct {
+	CurrentXID      int64
+	CurrentSnapshot string
+	XIDMin          int64
+	XIDMax          int64
+}
+
+templ MVCCInfo(data MVCCData) {
+	<div style="display: flex; flex-direction: column; gap: 8px;">
+		<div style="display: flex; justify-content: space-between; align-items: center;">
+			<span style="color: var(--text-muted);">Current XID:</span>
+			<span style="color: var(--cyan-400); font-weight: 600;">{ fmt.Sprintf("%d", data.CurrentXID) }</span>
+		</div>
+		<div style="display: flex; justify-content: space-between; align-items: center;">
+			<span style="color: var(--text-muted);">XID Range:</span>
+			<span style="color: var(--text-secondary);">{ fmt.Sprintf("%d − %d", data.XIDMin, data.XIDMax) }</span>
+		</div>
+		<div style="margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--border);">
+			<div style="color: var(--text-muted); font-size: 0.65rem; margin-bottom: 4px;">Snapshot:</div>
+			<div style="color: var(--purple-400); font-size: 0.7rem; word-break: break-all;">
+				if data.CurrentSnapshot != "" {
+					{ data.CurrentSnapshot }
+				} else {
+					−
+				}
+			</div>
+		</div>
+	</div>
+}
+
+templ MVCCError(message string) {
+	<div style="color: var(--red-400);">{ message }</div>
+}
+
+templ MVCCLoading() {
+	<div style="color: var(--text-muted);">Loading...</div>
+}
