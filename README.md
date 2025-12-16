@@ -27,6 +27,24 @@ make build
 open http://localhost:8080
 ```
 
+## Docker
+
+```bash
+docker-compose up --build
+```
+
+| Service    | URL                                                  |
+|------------|------------------------------------------------------|
+| Visualizer | http://localhost:8080                                |
+| PostgreSQL | `postgres://postgres:postgres@localhost:5433/demo`   |
+
+Includes demo tables (`demo`, `hot_demo`) and required extensions pre-loaded.
+
+```bash
+# psql into the container
+docker-compose exec db psql -U postgres demo
+```
+
 ## Build Dependencies
 
 [templ](https://templ.guide/) - HTML templating for Go:
