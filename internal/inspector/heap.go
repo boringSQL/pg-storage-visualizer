@@ -423,24 +423,34 @@ func (i *Inspector) ExecuteDemoUpdate(ctx context.Context, table, pk, column, ne
 	samePage := loc.Page == newLoc.Page
 	isHot := samePage && hasFlag(after.InfoMask, "HEAP_HOT_UPDATED")
 
+	// Check if the column is actually indexed
+	isColumnIndexed := false
+	for _, ic := range info.IndexedColumns {
+		if ic == column {
+			isColumnIndexed = true
+			break
+		}
+	}
+
 	updateType := "regular"
 	if isHot {
 		updateType = "hot"
 	}
 
-	explanation := buildExplanation(isHot, samePage, loc, newLoc, column)
+	explanation := buildExplanation(isHot, samePage, isColumnIndexed, loc, newLoc, column)
 
 	return &DemoUpdateResult{
-		Success:     true,
-		UpdateType:  updateType,
-		Column:      column,
-		OldValue:    oldVal,
-		NewValue:    newVal,
-		Before:      before,
-		After:       after,
-		NewTuple:    newState,
-		SamePage:    samePage,
-		Explanation: explanation,
+		Success:         true,
+		UpdateType:      updateType,
+		Column:          column,
+		IsColumnIndexed: isColumnIndexed,
+		OldValue:        oldVal,
+		NewValue:        newVal,
+		Before:          before,
+		After:           after,
+		NewTuple:        newState,
+		SamePage:        samePage,
+		Explanation:     explanation,
 	}, nil
 }
 
@@ -620,20 +630,26 @@ func tupleState(loc *RowLocation, t *HeapTuple) DemoTupleState {
 	}
 }
 
-func buildExplanation(isHot, samePage bool, before, after *RowLocation, col string) string {
+func buildExplanation(isHot, samePage, isColumnIndexed bool, before, after *RowLocation, col string) string {
 	if isHot {
+		if isColumnIndexed {
+			// This shouldn't happen - HOT with indexed column change
+			return fmt.Sprintf(
+				"🔥 HOT UPDATE (unexpected): column '%s' IS indexed but PostgreSQL used HOT. Value may be bitwise identical, or check if index exists. Page %d, lp %d→%d.",
+				col, before.Page, before.Item, after.Item)
+		}
 		return fmt.Sprintf(
-			"🔥 HOT UPDATE: new tuple on same page (%d). Old tuple at lp=%d has HEAP_HOT_UPDATED and points to lp=%d. Index not updated since only '%s' changed.",
-			before.Page, before.Item, after.Item, col)
+			"🔥 HOT UPDATE: column '%s' is not indexed, so no index update needed. New tuple on same page (%d), lp %d→%d.",
+			col, before.Page, before.Item, after.Item)
 	}
 	if samePage {
 		return fmt.Sprintf(
-			"📦 REGULAR UPDATE (same page %d): indexed column '%s' modified, index updated.",
-			before.Page, col)
+			"📦 REGULAR UPDATE (same page %d): column '%s' is indexed, index was updated. lp %d→%d.",
+			before.Page, col, before.Item, after.Item)
 	}
 	return fmt.Sprintf(
-		"📦 REGULAR UPDATE: tuple moved from page %d to %d. Index updated.",
-		before.Page, after.Page)
+		"📦 REGULAR UPDATE: tuple moved from page %d (lp=%d) to page %d (lp=%d). Index updated.",
+		before.Page, before.Item, after.Page, after.Item)
 }
 
 func lpFlagsStr(f int) string {

@@ -93,17 +93,18 @@ type DemoTupleState struct {
 }
 
 type DemoUpdateResult struct {
-	Success     bool            `json:"success"`
-	Error       string          `json:"error,omitempty"`
-	UpdateType  string          `json:"updateType"`
-	Column      string          `json:"column"`
-	OldValue    string          `json:"oldValue"`
-	NewValue    string          `json:"newValue"`
-	Before      DemoTupleState  `json:"before"`
-	After       DemoTupleState  `json:"after"`
-	NewTuple    *DemoTupleState `json:"newTuple"`
-	SamePage    bool            `json:"samePage"`
-	Explanation string          `json:"explanation"`
+	Success         bool            `json:"success"`
+	Error           string          `json:"error,omitempty"`
+	UpdateType      string          `json:"updateType"`
+	Column          string          `json:"column"`
+	IsColumnIndexed bool            `json:"isColumnIndexed"`
+	OldValue        string          `json:"oldValue"`
+	NewValue        string          `json:"newValue"`
+	Before          DemoTupleState  `json:"before"`
+	After           DemoTupleState  `json:"after"`
+	NewTuple        *DemoTupleState `json:"newTuple"`
+	SamePage        bool            `json:"samePage"`
+	Explanation     string          `json:"explanation"`
 }
 
 type TreeNode struct {

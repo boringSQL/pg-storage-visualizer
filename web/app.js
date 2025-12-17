@@ -394,7 +394,7 @@ function renderBloatTab(stats, bloat, densityMap) {
                         ${stats.leafPages > 50 ? `<div style="padding: 4px 8px; font-size: 0.7rem; color: var(--text-muted);">+${stats.leafPages - 50}</div>` : ''}
                     </div>
                     <div style="font-family: 'IBM Plex Mono', monospace; font-size: 1.5rem; font-weight: 700;">${stats.leafPages} pages</div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted);">${formatBytes(stats.indexSize)}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">${formatBytes(stats.leafPages * 8192)}</div>
                 </div>
 
                 <!-- Optimal state -->
@@ -668,7 +668,8 @@ function decodeKeyData(hexData) {
 }
 
 function renderPageDetail(detail) {
-    const { stats, items } = detail;
+    const { stats, items: rawItems } = detail;
+    const items = rawItems || [];
     const isLeaf = stats.btpoLevel === 0;
     const pageType = isLeaf ? 'leaf' : 'internal';
     const density = 100 * (stats.pageSize - stats.freeSize) / stats.pageSize;
@@ -943,7 +944,7 @@ function renderTableView(data) {
                     ${healthStatus === 'success' ? 'Healthy' : healthStatus === 'warning' ? 'Needs VACUUM' : 'High Bloat'}
                 </span>
             </h1>
-            <p class="header-subtitle">Heap Table • ${info.rowCount.toLocaleString()} rows • ${formatBytes(info.size)}</p>
+            <p class="header-subtitle">Heap Table • ${info.rowCount < 0 ? '~?' : info.rowCount.toLocaleString()} rows • ${formatBytes(info.size)}</p>
         </div>
 
         <div class="tabs">
@@ -1345,6 +1346,201 @@ function renderTableStorageTab() {
                             <div style="font-size: 0.85rem; color: var(--text-muted);">
                                 B-tree index entries store TIDs that point directly to heap tuple locations.
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row vs Tuple explanation -->
+            <div class="bloat-panel animate-in" style="margin-top: 24px;">
+                <div class="bloat-header">
+                    <span class="bloat-icon">📝</span>
+                    <span class="bloat-title">Row vs Tuple: Understanding the Difference</span>
+                </div>
+                <div style="padding: 16px; background: var(--bg-primary); border-radius: 8px;">
+                    <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                        In PostgreSQL, <strong style="color: var(--cyan-400);">row</strong> and <strong style="color: var(--orange-400);">tuple</strong> are related but distinct concepts:
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div style="background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%); padding: 16px; border-radius: 8px; border-left: 4px solid var(--cyan-400);">
+                            <div style="font-weight: 700; color: var(--cyan-400); margin-bottom: 8px; font-size: 1.1rem;">Row (Logical)</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;">
+                                A <strong>row</strong> is the logical representation of your data — what you see when you run a SELECT query.
+                                It represents the <em>current</em> state of a record.
+                            </div>
+                            <div style="margin-top: 12px; background: var(--bg-primary); padding: 8px 12px; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">
+                                <span style="color: var(--purple-400);">SELECT</span> * <span style="color: var(--purple-400);">FROM</span> users;<br/>
+                                <span style="color: var(--text-muted);">-- Returns rows (current data)</span>
+                            </div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%); padding: 16px; border-radius: 8px; border-left: 4px solid var(--orange-400);">
+                            <div style="font-weight: 700; color: var(--orange-400); margin-bottom: 8px; font-size: 1.1rem;">Tuple (Physical)</div>
+                            <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;">
+                                A <strong>tuple</strong> is the physical representation stored on disk.
+                                Due to MVCC, one logical row may have <em>multiple</em> tuple versions.
+                            </div>
+                            <div style="margin-top: 12px; background: var(--bg-primary); padding: 8px 12px; border-radius: 4px; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem;">
+                                <span style="color: var(--text-muted);">-- Same row, multiple tuples:</span><br/>
+                                Tuple v1: xmax=100 <span style="color: var(--red-400);">(dead)</span><br/>
+                                Tuple v2: xmin=100 <span style="color: var(--green-400);">(live)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: var(--bg-secondary); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-light);">
+                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Why Does This Matter?</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+                            When you UPDATE a row, PostgreSQL doesn't modify the existing tuple in place. Instead, it creates a <strong>new tuple</strong>
+                            with the updated data and marks the old tuple as dead. This is how <strong>MVCC (Multi-Version Concurrency Control)</strong> works —
+                            allowing concurrent transactions to see consistent snapshots without blocking each other.
+                            The dead tuples are later cleaned up by <strong>VACUUM</strong>.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tuple anatomy explanation -->
+            <div class="bloat-panel animate-in" style="margin-top: 24px;">
+                <div class="bloat-header">
+                    <span class="bloat-icon">🔬</span>
+                    <span class="bloat-title">Anatomy of a Tuple</span>
+                </div>
+                <div style="padding: 16px; background: var(--bg-primary); border-radius: 8px;">
+                    <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                        Every tuple in PostgreSQL consists of a <strong>header</strong> (at least 23 bytes) followed by the actual <strong>user data</strong>.
+                        The header contains metadata crucial for MVCC and data integrity.
+                    </p>
+
+                    <!-- Tuple structure diagram -->
+                    <div style="background: var(--bg-secondary); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; margin-bottom: 12px; color: var(--text-primary);">Tuple Header Structure</div>
+                        <div style="display: flex; flex-direction: column; gap: 3px; font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem;">
+                            <div style="display: flex; gap: 3px;">
+                                <div style="background: var(--purple-500); padding: 10px; border-radius: 4px; flex: 1; text-align: center; color: white;">
+                                    <div style="font-weight: 600;">t_xmin</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">4 bytes</div>
+                                </div>
+                                <div style="background: var(--purple-400); padding: 10px; border-radius: 4px; flex: 1; text-align: center; color: white;">
+                                    <div style="font-weight: 600;">t_xmax</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">4 bytes</div>
+                                </div>
+                                <div style="background: var(--cyan-500); padding: 10px; border-radius: 4px; flex: 1; text-align: center; color: white;">
+                                    <div style="font-weight: 600;">t_cid</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">4 bytes</div>
+                                </div>
+                                <div style="background: var(--cyan-400); padding: 10px; border-radius: 4px; flex: 1; text-align: center; color: white;">
+                                    <div style="font-weight: 600;">t_ctid</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">6 bytes</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 3px;">
+                                <div style="background: var(--green-500); padding: 10px; border-radius: 4px; flex: 1; text-align: center; color: white;">
+                                    <div style="font-weight: 600;">t_infomask2</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">2 bytes</div>
+                                </div>
+                                <div style="background: var(--green-400); padding: 10px; border-radius: 4px; flex: 1; text-align: center; color: white;">
+                                    <div style="font-weight: 600;">t_infomask</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">2 bytes</div>
+                                </div>
+                                <div style="background: var(--yellow-500); padding: 10px; border-radius: 4px; flex: 1; text-align: center; color: #000;">
+                                    <div style="font-weight: 600;">t_hoff</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">1 byte</div>
+                                </div>
+                                <div style="background: var(--orange-500); padding: 10px; border-radius: 4px; flex: 2; text-align: center; color: white;">
+                                    <div style="font-weight: 600;">User Data (columns)</div>
+                                    <div style="font-size: 0.7rem; opacity: 0.8;">variable length</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Field explanations -->
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px;">
+                            <div style="font-weight: 600; color: var(--purple-400); margin-bottom: 4px;">t_xmin (Insert XID)</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                Transaction ID that <strong>inserted</strong> this tuple. Used to determine visibility — only transactions
+                                started after this XID committed can see this tuple.
+                            </div>
+                        </div>
+                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px;">
+                            <div style="font-weight: 600; color: var(--purple-400); margin-bottom: 4px;">t_xmax (Delete XID)</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                Transaction ID that <strong>deleted or updated</strong> this tuple. If 0, the tuple is live.
+                                Non-zero means this tuple version is no longer current.
+                            </div>
+                        </div>
+                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px;">
+                            <div style="font-weight: 600; color: var(--cyan-400); margin-bottom: 4px;">t_ctid (Current TID)</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                Points to itself if this is the latest version. Otherwise, points to the <strong>next version</strong>
+                                of this row — forming a chain for HOT updates.
+                            </div>
+                        </div>
+                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px;">
+                            <div style="font-weight: 600; color: var(--green-400); margin-bottom: 4px;">t_infomask (Flags)</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">
+                                Bit flags indicating tuple state: <code style="background: var(--bg-tertiary); padding: 1px 4px; border-radius: 2px;">HEAP_XMIN_COMMITTED</code>,
+                                <code style="background: var(--bg-tertiary); padding: 1px 4px; border-radius: 2px;">HEAP_HOT_UPDATED</code>, NULL bitmap info, etc.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MVCC example -->
+                    <div style="margin-top: 16px; background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%); padding: 16px; border-radius: 8px; border: 1px solid var(--border-light);">
+                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 12px;">Example: UPDATE Creates a New Tuple</div>
+                        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; line-height: 1.8;">
+                            <div style="color: var(--text-muted); margin-bottom: 8px;">-- Initial INSERT (Transaction 100)</div>
+                            <div style="background: var(--bg-primary); padding: 8px 12px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid var(--green-400);">
+                                <span style="color: var(--purple-400);">INSERT INTO</span> users (name) <span style="color: var(--purple-400);">VALUES</span> ('Alice');<br/>
+                                <span style="color: var(--text-muted);">→ Tuple created: xmin=100, xmax=0, ctid=(0,1)</span>
+                            </div>
+                            <div style="color: var(--text-muted); margin-bottom: 8px;">-- UPDATE (Transaction 150)</div>
+                            <div style="background: var(--bg-primary); padding: 8px 12px; border-radius: 4px; border-left: 3px solid var(--orange-400);">
+                                <span style="color: var(--purple-400);">UPDATE</span> users <span style="color: var(--purple-400);">SET</span> name = 'Alicia' <span style="color: var(--purple-400);">WHERE</span> name = 'Alice';<br/>
+                                <span style="color: var(--text-muted);">→ Old tuple: xmin=100, <span style="color: var(--red-400);">xmax=150</span>, ctid=<span style="color: var(--cyan-400);">(0,2)</span> <span style="color: var(--red-400);">(dead)</span></span><br/>
+                                <span style="color: var(--text-muted);">→ New tuple: xmin=150, xmax=0, ctid=(0,2) <span style="color: var(--green-400);">(live)</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Line Pointers explanation -->
+            <div class="bloat-panel animate-in" style="margin-top: 24px;">
+                <div class="bloat-header">
+                    <span class="bloat-icon">👆</span>
+                    <span class="bloat-title">Line Pointers: The Indirection Layer</span>
+                </div>
+                <div style="padding: 16px; background: var(--bg-primary); border-radius: 8px;">
+                    <p style="color: var(--text-secondary); margin-bottom: 16px;">
+                        Line pointers provide a level of <strong>indirection</strong> between TIDs and actual tuple data.
+                        This design enables efficient HOT updates and tuple compaction without changing TIDs.
+                    </p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                        <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+                            <div style="font-weight: 600; color: var(--cyan-400); margin-bottom: 8px;">Each Line Pointer Contains:</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
+                                <div><strong style="color: var(--text-secondary);">lp_off</strong> — Byte offset to tuple (15 bits)</div>
+                                <div><strong style="color: var(--text-secondary);">lp_flags</strong> — Status flags (2 bits)</div>
+                                <div><strong style="color: var(--text-secondary);">lp_len</strong> — Tuple length in bytes (15 bits)</div>
+                            </div>
+                        </div>
+                        <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px;">
+                            <div style="font-weight: 600; color: var(--cyan-400); margin-bottom: 8px;">Line Pointer States:</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;">
+                                <div><span style="color: var(--green-400);">LP_NORMAL</span> — Points to a valid tuple</div>
+                                <div><span style="color: var(--orange-400);">LP_REDIRECT</span> — Points to another LP (HOT)</div>
+                                <div><span style="color: var(--red-400);">LP_DEAD</span> — Can be reused</div>
+                                <div><span style="color: var(--text-muted);">LP_UNUSED</span> — Never used</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: var(--bg-secondary); padding: 12px 16px; border-radius: 8px; border: 1px solid var(--border-light);">
+                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Why Indirection?</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+                            Index entries store TIDs like <code style="background: var(--bg-tertiary); padding: 1px 4px; border-radius: 2px;">(page, line_pointer)</code>.
+                            When a tuple is updated via <strong>HOT</strong> (Heap-Only Tuple), the new tuple stays on the same page and the line pointer
+                            can be updated to point to the new location — <em>without updating any indexes</em>. This is a major performance optimization.
                         </div>
                     </div>
                 </div>

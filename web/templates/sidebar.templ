@@ -45,7 +45,11 @@ templ TableList(tables []TableInfo, currentTable string) {
 				<div class="table-text">
 					<div class="table-name">{ t.Name }</div>
 					<div class="table-rows">
-						{ fmt.Sprintf("%d rows", t.RowCount) }
+						if t.RowCount < 0 {
+							~? rows
+						} else {
+							{ fmt.Sprintf("%d rows", t.RowCount) }
+						}
 						if t.DeadRows > 0 {
 							{ fmt.Sprintf(" (%d dead)", t.DeadRows) }
 						}
