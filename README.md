@@ -3,6 +3,8 @@
 PostgreSQL storage visualization tool for education purposes. Explore tables and
 indexes - page structure, tuples, MVCC, HOT chains, bloat and more.
 
+Introduction video https://www.youtube.com/watch?v=fRz1ul2ynOs 
+
 **IMPORTANT** this tool is not to be used for running against any production
 PostgreSQL cluster!
 
