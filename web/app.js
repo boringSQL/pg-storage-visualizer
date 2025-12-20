@@ -72,6 +72,7 @@ async function selectIndex(indexName, tableName, pushHistory = true) {
     currentIndex = indexName;
     currentTable = tableName || null;
     currentView = 'index';
+    currentTab = 'overview';
     selectedPage = null;
 
     if (pushHistory) {
