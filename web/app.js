@@ -1711,9 +1711,13 @@ function renderHeapPageDetail(detail, blockNo) {
     const pageSize = 8192;
     const headerSize = 24;
 
-    // Calculate live/dead counts
+    // Calculate live/dead/reclaimed counts.
+    // LP_NORMAL + xmax==0      -> live
+    // LP_NORMAL + xmax!=0      -> dead (still holds tuple storage, awaiting vacuum)
+    // LP_UNUSED / LP_DEAD      -> reusable slot (vacuumed; 0 bytes of tuple data)
     const liveTuples = tuples.filter(t => t.isLive);
-    const deadTuples = tuples.filter(t => !t.isLive);
+    const deadTuples = tuples.filter(t => !t.isLive && t.lpFlagsStr === 'LP_NORMAL');
+    const reusableTuples = tuples.filter(t => t.lpFlagsStr === 'LP_UNUSED' || t.lpFlagsStr === 'LP_DEAD');
 
     // Calculate space usage
     const linePointersSize = tuples.length * 4;
@@ -1766,11 +1770,14 @@ function renderHeapPageDetail(detail, blockNo) {
                         <div style="width: ${(liveTuples.reduce((s, t) => s + (t.itemLen || 0), 0) / pageSize * 100).toFixed(1)}%; background: linear-gradient(180deg, var(--orange-500), var(--orange-400)); display: flex; align-items: center; justify-content: center; border-right: ${deadTuples.length > 0 ? '2px solid var(--bg-primary)' : 'none'};">
                             <span style="font-size: 0.75rem; color: white; font-weight: 700;">${liveTuples.length} LIVE</span>
                         </div>` : ''}
-                        <!-- Dead Tuples -->
+                        <!-- Dead Tuples (still hold storage) -->
                         ${deadTuples.length > 0 ? `
                         <div style="width: ${(deadTuples.reduce((s, t) => s + (t.itemLen || 0), 0) / pageSize * 100).toFixed(1)}%; background: repeating-linear-gradient(45deg, var(--red-500), var(--red-500) 10px, var(--red-400) 10px, var(--red-400) 20px); display: flex; align-items: center; justify-content: center;">
                             <span style="font-size: 0.75rem; color: white; font-weight: 700; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">${deadTuples.length} DEAD</span>
                         </div>` : ''}
+                        <!-- Reusable slots (vacuumed; 0 bytes of tuple data, just the line pointer) -->
+                        ${reusableTuples.length > 0 ? `
+                        <div style="min-width: 8px; background: repeating-linear-gradient(45deg, var(--bg-tertiary), var(--bg-tertiary) 6px, var(--border-light) 6px, var(--border-light) 8px); display: flex; align-items: center; justify-content: center; border-left: 2px solid var(--bg-primary);" title="${reusableTuples.length} LP_UNUSED slot(s): vacuumed, 0 bytes of tuple data, reusable by the next insert/update on this page"></div>` : ''}
                     </div>
 
                     <!-- Stats Row -->
@@ -1779,17 +1786,17 @@ function renderHeapPageDetail(detail, blockNo) {
                             <div style="font-size: 0.7rem; color: var(--text-muted);">Live Tuples</div>
                             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 1.2rem; font-weight: 700; color: var(--orange-400);">${liveTuples.length}</div>
                         </div>
-                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; text-align: center;">
+                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; text-align: center;" title="LP_NORMAL tuples with xmax set — still occupy storage until VACUUM runs">
                             <div style="font-size: 0.7rem; color: var(--text-muted);">Dead Tuples</div>
                             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 1.2rem; font-weight: 700; color: ${deadTuples.length > 0 ? 'var(--red-400)' : 'var(--text-muted)'};">${deadTuples.length}</div>
+                        </div>
+                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; text-align: center;" title="LP_UNUSED slots — vacuumed, 0 bytes of tuple data, reusable by the next insert/update">
+                            <div style="font-size: 0.7rem; color: var(--text-muted);">Reusable Slots</div>
+                            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 1.2rem; font-weight: 700; color: ${reusableTuples.length > 0 ? 'var(--text-secondary)' : 'var(--text-muted)'};">${reusableTuples.length}</div>
                         </div>
                         <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; text-align: center;">
                             <div style="font-size: 0.7rem; color: var(--text-muted);">Free Space</div>
                             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 1.2rem; font-weight: 700; color: var(--text-secondary);">${formatBytes(freeSpace)}</div>
-                        </div>
-                        <div style="background: var(--bg-secondary); padding: 12px; border-radius: 8px; text-align: center;">
-                            <div style="font-size: 0.7rem; color: var(--text-muted);">Line Pointers</div>
-                            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 1.2rem; font-weight: 700; color: var(--cyan-400);">${tuples.length}</div>
                         </div>
                     </div>
                 </div>
@@ -1805,6 +1812,7 @@ function renderHeapPageDetail(detail, blockNo) {
                     <div style="display: flex; gap: 16px; font-size: 0.8rem;">
                         <span style="color: var(--orange-400);">● ${liveTuples.length} live</span>
                         ${deadTuples.length > 0 ? `<span style="color: var(--red-400);">● ${deadTuples.length} dead</span>` : ''}
+                        ${reusableTuples.length > 0 ? `<span style="color: var(--text-muted);">● ${reusableTuples.length} reusable</span>` : ''}
                     </div>
                 </div>
 
@@ -1812,12 +1820,19 @@ function renderHeapPageDetail(detail, blockNo) {
                 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; max-height: 600px; overflow-y: auto; padding: 4px;">
                     ${tuples.slice(0, 50).map((tuple, idx) => {
                         const isHighlighted = highlightTID && highlightTID.page === blockNo && highlightTID.item === tuple.lp;
+                        const isReusable = tuple.lpFlagsStr === 'LP_UNUSED' || tuple.lpFlagsStr === 'LP_DEAD';
+                        const isDead = !tuple.isLive && !isReusable;
+                        // Reusable (vacuumed) slots render neutral-gray, not alarming red.
+                        const accent = isDead ? 'var(--red-500)' : isReusable ? 'var(--border-light)' : isHighlighted ? 'var(--cyan-400)' : 'var(--orange-500)';
+                        const accentText = isDead ? 'var(--red-400)' : isReusable ? 'var(--text-muted)' : 'var(--orange-400)';
+                        const cardBg = isDead ? 'rgba(239,68,68,0.15)' : isReusable ? 'var(--bg-tertiary)' : isHighlighted ? 'rgba(34,211,238,0.2)' : 'var(--bg-tertiary)';
+                        const headerBg = isDead ? 'rgba(239,68,68,0.2)' : isReusable ? 'var(--bg-secondary)' : isHighlighted ? 'rgba(34,211,238,0.15)' : 'rgba(249,115,22,0.15)';
                         return `
-                        <div id="tuple-${tuple.lp}" style="background: ${!tuple.isLive ? 'rgba(239,68,68,0.15)' : isHighlighted ? 'rgba(34,211,238,0.2)' : 'var(--bg-tertiary)'}; border: 2px solid ${!tuple.isLive ? 'var(--red-500)' : isHighlighted ? 'var(--cyan-400)' : 'var(--orange-500)'}; border-radius: 12px; overflow: hidden; ${isHighlighted ? 'animation: pulse 1s ease-in-out 3;' : ''}">
+                        <div id="tuple-${tuple.lp}" style="background: ${cardBg}; border: 2px solid ${accent}; border-radius: 12px; overflow: hidden; ${isReusable ? 'opacity: 0.65;' : ''} ${isHighlighted ? 'animation: pulse 1s ease-in-out 3;' : ''}">
                             <!-- Tuple Header -->
-                            <div style="padding: 10px 14px; background: ${!tuple.isLive ? 'rgba(239,68,68,0.2)' : isHighlighted ? 'rgba(34,211,238,0.15)' : 'rgba(249,115,22,0.15)'}; border-bottom: 1px solid ${!tuple.isLive ? 'var(--red-500)' : isHighlighted ? 'var(--cyan-400)' : 'var(--orange-500)'}; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="padding: 10px 14px; background: ${headerBg}; border-bottom: 1px solid ${accent}; display: flex; justify-content: space-between; align-items: center;">
                                 <div>
-                                    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem; font-weight: 700; color: ${!tuple.isLive ? 'var(--red-400)' : 'var(--orange-400)'};">lp=${tuple.lp}</span>
+                                    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem; font-weight: 700; color: ${accentText};">lp=${tuple.lp}</span>
                                     <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 8px;">${tuple.lpFlagsStr}</span>
                                 </div>
                                 <div style="font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--cyan-400);" title="TID: (${blockNo},${tuple.lp})">(${blockNo},${tuple.lp})</div>
@@ -1865,7 +1880,8 @@ function renderHeapPageDetail(detail, blockNo) {
 
                                 <!-- Flags/State -->
                                 <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;">
-                                    ${!tuple.isLive ? '<span style="background: var(--red-500); color: white; font-size: 0.6rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">DEAD</span>' : ''}
+                                    ${isDead ? '<span style="background: var(--red-500); color: white; font-size: 0.6rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">DEAD</span>' : ''}
+                                    ${isReusable ? '<span style="background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border-light); font-size: 0.6rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;" title="Vacuumed slot — 0 bytes, reusable">REUSABLE</span>' : ''}
                                     ${tuple.isHot ? '<span style="background: var(--purple-500); color: white; font-size: 0.6rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">HOT</span>' : ''}
                                     ${tuple.isUpdated ? '<span style="background: var(--yellow-500); color: black; font-size: 0.6rem; font-weight: 700; padding: 2px 6px; border-radius: 4px;">UPDATED</span>' : ''}
                                     ${tuple.infoMask?.includes('HEAP_XMIN_COMMITTED') ? '<span style="background: var(--green-600); color: white; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px;">COMMITTED</span>' : ''}
